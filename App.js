@@ -6,7 +6,7 @@
  */
 
 import React, {useEffect, useRef, useState} from 'react';
-import NfcManager, {NfcTech} from 'react-native-nfc-manager';
+import NfcManager, {Ndef, NfcTech} from 'react-native-nfc-manager';
 import {
   SafeAreaView,
   StyleSheet,
@@ -27,10 +27,8 @@ function App() {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
   };
 
-  const handlerRef = useRef();
-
   const [text, setText] = useState(null);
-  const [log, setLog] = useState('');
+  const [log, setLog] = useState({text: '', id: ''});
   const [status, setStatus] = useState('');
   const [supported, setSupported] = useState(null);
   const [enabled, setEnabled] = useState(null);
@@ -79,18 +77,6 @@ function App() {
               const sharedRecord = JSON.parse(params.data);
               if (sharedRecord.payload?.tech === NfcTech.Ndef) {
                 navigation.navigate('NdefWrite', {savedRecord: sharedRecord});
-              } else if (sharedRecord.payload?.tech === NfcTech.NfcA) {
-                navigation.navigate('CustomTransceive', {
-                  savedRecord: sharedRecord,
-                });
-              } else if (sharedRecord.payload?.tech === NfcTech.NfcV) {
-                navigation.navigate('CustomTransceive', {
-                  savedRecord: sharedRecord,
-                });
-              } else if (sharedRecord.payload?.tech === NfcTech.IsoDep) {
-                navigation.navigate('CustomTransceive', {
-                  savedRecord: sharedRecord,
-                });
               } else {
                 console.warn('unrecognized share payload tech');
               }
@@ -148,8 +134,33 @@ function App() {
     if (!text) {
       return;
     }
-    // console.log(text);
-    await NfcProxy.writeNdef({type: 'TEXT', value: text}, setStatus);
+
+    try {
+      setStatus('Warte...');
+      console.log('1');
+      await NfcManager.requestTechnology(NfcTech.Ndef, {
+        alertMessage: '',
+      });
+      console.log('2');
+      let bytes = null;
+
+      bytes = Ndef.encodeMessage([Ndef.textRecord(text)]);
+      console.log('3');
+
+      if (bytes) {
+        console.log('4');
+        await NfcManager.writeNdefMessage(bytes);
+        result = true;
+        console.log('5');
+      }
+      setStatus('geschrieben...');
+      setLog(text);
+    } catch (ex) {
+      console.log(ex);
+      console.log('6');
+    } finally {
+      NfcManager.cancelTechnologyRequest();
+    }
   };
 
   useEffect(() => {
@@ -172,14 +183,14 @@ function App() {
           style={{
             width: '80%',
             backgroundColor: '#ddd',
-            height: 500,
+            height: 200,
             borderRadius: 20,
             textAlign: 'center',
             textAlignVertical: 'center',
             color: '#000',
             fontSize: 20,
           }}>
-          {log}
+          {`Text: ${log?.text} \n ID: ${log.id}`}
         </Text>
         <Text
           style={{

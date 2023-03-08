@@ -134,7 +134,7 @@ class NfcProxy {
     if (Array.isArray(tag.ndefMessage) && tag.ndefMessage.length > 0) {
       let msg = tag.ndefMessage[0];
       let text = Ndef.text.decodePayload(msg.payload);
-      setLog(text);
+      setLog({text, id: tag.id});
     } else {
       setLog(JSON.stringify(tag));
     }
@@ -148,18 +148,22 @@ class NfcProxy {
 
     try {
       setStatus('Warte...');
+      console.log('1');
       await NfcManager.requestTechnology(NfcTech.Ndef, {
         alertMessage: 'Ready to write some NDEF',
       });
+      console.log('2');
 
       let bytes = null;
 
       bytes = Ndef.encodeMessage([Ndef.textRecord(value)]);
+      console.log('3');
 
       if (bytes) {
         console.log(bytes);
-        await NfcManager.ndefHandler.writeNdefMessage(bytes);
+        await ndefHandler.writeNdefMessage(bytes);
         result = true;
+        console.log('4');
       }
       setStatus('geschrieben...');
     } catch (ex) {
