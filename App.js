@@ -5,12 +5,10 @@
  * @format
  */
 
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import NfcManager, {NfcTech} from 'react-native-nfc-manager';
 import {
   SafeAreaView,
-  ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -19,13 +17,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+import {Colors} from 'react-native/Libraries/NewAppScreen';
+import NfcProxy from './NfcProxy';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -33,163 +26,141 @@ function App() {
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
   };
-  const [text, setText] = useState('');
+
+  const handlerRef = useRef();
+
+  const [text, setText] = useState(null);
   const [log, setLog] = useState('');
-  const [isError, setIsError] = useState('');
+  const [status, setStatus] = useState('');
+  const [supported, setSupported] = useState(null);
+  const [enabled, setEnabled] = useState(null);
   const handleTextChange = text => {
     setText(text);
   };
-  // ////////////////////////////////////////////////////////////////////?
-  // async function writeNdef({type, value}) {
-  //   let result = false;
 
-  //   try {
-  //     // STEP 1
-  //     await NfcManager.requestTechnology(NfcTech.Ndef);
-
-  //     const bytes = Ndef.encodeMessage([Ndef.textRecord('Hello NFC')]);
-
-  //     if (bytes) {
-  //       await NfcManager.ndefHandler.writeNdefMessage(bytes); // STEP 3
-  //       result = true;
-  //     }
-  //   } catch (ex) {
-  //     console.warn(ex);
-  //   } finally {
-  //     // STEP 4
-  //     NfcManager.cancelTechnologyRequest();
-  //   }
-
-  //   return result;
-  // }
-  // ////////////////////////////////////////////////////////////////////?
-
-  // ////////////////////////////////////////////////////////////////////?
-  // async function readMifare() {
-  //   let mifarePages = [];
-
-  //   try {
-  //     // STEP 1
-  //     let reqMifare = await NfcManager.requestTechnology(
-  //       NfcTech.MifareUltralight,
-  //     );
-
-  //     const readLength = 60;
-  //     const mifarePagesRead = await Promise.all(
-  //       [...Array(readLength).keys()].map(async (_, i) => {
-  //         const pages =
-  //           await NfcManager.mifareUltralightHandlerAndroid.mifareUltralightReadPages(
-  //             i * 4,
-  //           );
-  //         mifarePages.push(pages);
-  //       }),
-  //     );
-  //   } catch (ex) {
-  //     console.warn(ex);
-  //   } finally {
-  //     // STEP 4
-  //     NfcManager.cancelTechnologyRequest();
-  //   }
-  //   setLog(mifarePages.toString());
-  //   return mifarePages;
-  // }
-  // ////////////////////////////////////////////////////////////////////?
-
-  const readData = async () => {
-    setLog('');
+  const initNfc = async () => {
     try {
-      let tech = NfcTech.NfcA;
-      let res = await NfcManager.requestTechnology(tech, {
-        alertMessage: 'Ist Bereit',
-      });
+      const success = await NfcProxy.init();
+      setSupported(success);
+      setEnabled(await NfcProxy.isEnabled());
 
-      let cmd = NfcManager.transceive;
-      res = await cmd([0x3a, 4, 4]);
-      let payloadLength = parseInt(res.toString().split(',')[1]);
-      let payloadPages = Math.ceil(payloadLength / 4);
-      let startPage = 5;
-      let endPage = startPage + payloadPages - 1;
-
-      res = cmd([0x3a, startPage, endPage]);
-      let bytes = res.toString().split(',');
-      let tempText = '';
-
-      for (let i = 0; i < bytes.length; i++) {
-        if (i < 5) {
-          continue;
+      if (success) {
+        function onBackgroundTag(bgTag) {
+          navigation.navigate('TagDetail', {tag: bgTag});
         }
 
-        if (parseInt(bytes[i]) === 254) {
-          break;
+        function onDeepLink(url, launch) {
+          try {
+            const customScheme = [
+              'com.washow.nfcopenrewriter://', // android
+              'com.revteltech.nfcopenrewriter://', // ios
+            ].find(scheme => {
+              return scheme === url.slice(0, scheme.length);
+            });
+
+            if (!customScheme) {
+              return;
+            }
+
+            url = url.slice(customScheme.length);
+
+            // issue #23: we might have '?' in our payload, so we cannot simply "split" it
+            let action = url;
+            let query = '';
+            let splitIdx = url.indexOf('?');
+
+            if (splitIdx > -1) {
+              action = url.slice(0, splitIdx);
+              query = url.slice(splitIdx);
+            }
+
+            const params = qs.parse(query);
+            if (action === 'share') {
+              const sharedRecord = JSON.parse(params.data);
+              if (sharedRecord.payload?.tech === NfcTech.Ndef) {
+                navigation.navigate('NdefWrite', {savedRecord: sharedRecord});
+              } else if (sharedRecord.payload?.tech === NfcTech.NfcA) {
+                navigation.navigate('CustomTransceive', {
+                  savedRecord: sharedRecord,
+                });
+              } else if (sharedRecord.payload?.tech === NfcTech.NfcV) {
+                navigation.navigate('CustomTransceive', {
+                  savedRecord: sharedRecord,
+                });
+              } else if (sharedRecord.payload?.tech === NfcTech.IsoDep) {
+                navigation.navigate('CustomTransceive', {
+                  savedRecord: sharedRecord,
+                });
+              } else {
+                console.warn('unrecognized share payload tech');
+              }
+            }
+          } catch (ex) {
+            console.warn('fail to parse deep link', ex);
+          }
         }
 
-        tempText = tempText + String.fromCharCode(parseInt(bytes[i]));
-        console.log(tempText);
+        // get the initial launching tag
+        const bgTag = await NfcManager.getBackgroundTag();
+        if (bgTag) {
+          onBackgroundTag(bgTag);
+        } else {
+          const link = await Linking.getInitialURL();
+          console.warn('DEEP LINK', link);
+          if (link) {
+            onDeepLink(link, true);
+          }
+        }
+
+        // listen to other background tags after the app launched
+        NfcManager.setEventListener(
+          NfcEvents.DiscoverBackgroundTag,
+          onBackgroundTag,
+        );
+
+        // listen to the NFC on/off state on Android device
+        if (Platform.OS === 'android') {
+          NfcManager.setEventListener(
+            NfcEvents.StateChanged,
+            ({state} = {}) => {
+              NfcManager.cancelTechnologyRequest().catch(() => 0);
+              if (state === 'off') {
+                setEnabled(false);
+              } else if (state === 'on') {
+                setEnabled(true);
+              }
+            },
+          );
+        }
+
+        Linking.addEventListener('url', event => {
+          if (event.url) {
+            onDeepLink(event.url, false);
+          }
+        });
       }
-
-      setLog(tempText);
-      // NfcManager.cancelTechnologyRequest().catch(() => 0);
-    } catch (err) {
-      setIsError(err.toString());
-      // NfcManager.cancelTechnologyRequest().catch(() => 0);
+    } catch (ex) {
+      console.warn('ALERTALERTALERT', ex);
     }
   };
 
-  const writeData = async () => {
-    if (!text.length) {
-      setText('Bitte etwas eingeben!');
+  const writeNdef = async () => {
+    if (!text) {
       return;
     }
-
-    try {
-      let tech = NfcTech.NfcA;
-      let res = await NfcManager.requestTechnology(tech, {
-        alertMessage: 'Ist Bereit',
-      });
-
-      let cmd = NfcManager.transceive;
-      let fullLength = text.length + 7;
-      let payloadLength = text.length + 3;
-
-      res = await cmd([0xa2, 0x04, 0x03, fullLength, 0xd1, 0x01]);
-      res = await cmd([0xa2, 0x04, 0x03, payloadLength, 0xd1, 0x01]);
-
-      let currentPage = 6;
-      let currentPayload = [0xa2, currentPage, 0x6e];
-
-      for (let i = 0; i < text.length; i++) {
-        currentPayload.push(text.charCodeAt(i));
-        if (currentPayload.length == 6) {
-          res = await cmd(currentPayload);
-          currentPage += 1;
-          currentPayload = [0xa2, currentPage];
-        }
-      }
-      currentPayload.push(254);
-
-      while (currentPayload.length < 6) {
-        currentPayload.push(0);
-      }
-
-      res = await cmd(currentPayload);
-
-      console.log('hallo');
-      setLog(res.toString() === '10' ? res.toString() : res.toString());
-    } catch (err) {
-      setIsError(err.toString());
-    }
+    // console.log(text);
+    await NfcProxy.writeNdef({type: 'TEXT', value: text}, setStatus);
   };
-  useEffect(() => {
-    NfcManager.start();
 
-    // return () => {};
+  useEffect(() => {
+    initNfc();
   }, []);
 
   return (
     <SafeAreaView style={backgroundStyle}>
       <View
         style={{
-          backgroundColor: '#ddd',
+          backgroundColor: '#000',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
@@ -200,19 +171,33 @@ function App() {
         <Text
           style={{
             width: '80%',
-            backgroundColor: '#222',
-            height: 100,
+            backgroundColor: '#ddd',
+            height: 500,
+            borderRadius: 20,
+            textAlign: 'center',
+            textAlignVertical: 'center',
+            color: '#000',
+            fontSize: 20,
+          }}>
+          {log}
+        </Text>
+        <Text
+          style={{
+            width: '80%',
+            // backgroundColor: 'i',
+            height: 40,
             borderRadius: 20,
             textAlign: 'center',
             textAlignVertical: 'center',
             color: '#fff',
             fontSize: 20,
           }}>
-          {log}
+          {status}
         </Text>
         <TextInput
+          value={text}
           style={{
-            backgroundColor: 'red',
+            backgroundColor: '#fff',
             height: 50,
             width: '90%',
             padding: 15,
@@ -220,6 +205,7 @@ function App() {
             color: 'black',
             borderRadius: 10,
           }}
+          placeholderTextColor="black"
           autoComplete="off"
           placeholder="NFC Eingeben"
           onChangeText={handleTextChange}
@@ -241,9 +227,7 @@ function App() {
               borderRadius: 8,
               backgroundColor: '#9D2235',
             }}
-            onPress={writeData}
-            // onPress={writeNdef}
-          >
+            onPress={writeNdef}>
             <Text
               style={{
                 width: '100%',
@@ -264,10 +248,10 @@ function App() {
               borderRadius: 8,
               backgroundColor: '#006C5B',
             }}
-            onPressIn={readData}
-            onPressOut={() =>
-              NfcManager.cancelTechnologyRequest().catch(() => 0)
-            }
+            onPress={async () => {
+              const tag = await NfcProxy.readTag(setStatus, setLog);
+              console.log('Tag console', tag);
+            }}
             // onPress={readMifare}
           >
             <Text
