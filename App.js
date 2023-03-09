@@ -5,7 +5,7 @@
  * @format
  */
 
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import NfcManager, {Ndef, NfcTech} from 'react-native-nfc-manager';
 import {
   SafeAreaView,
@@ -15,11 +15,12 @@ import {
   useColorScheme,
   View,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 
 import {Colors} from 'react-native/Libraries/NewAppScreen';
 import NfcProxy from './NfcProxy';
-
+const imgUrl = './logo.png';
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
@@ -132,11 +133,12 @@ function App() {
 
   const writeNdef = async () => {
     if (!text) {
+      setStatus('Eingabe erforderlich!');
       return;
     }
 
     try {
-      setStatus('Warte...');
+      setStatus('Bitte Tag scannen....');
       console.log('1');
       await NfcManager.requestTechnology(NfcTech.Ndef, {
         alertMessage: '',
@@ -154,10 +156,11 @@ function App() {
         console.log('5');
       }
       setStatus('geschrieben...');
-      setLog(text);
+      console.log('TEXT====>', text);
+      setLog({text, id: ''});
     } catch (ex) {
       console.log(ex);
-      console.log('6');
+      setStatus('Fehler aufgetreten!');
     } finally {
       NfcManager.cancelTechnologyRequest();
     }
@@ -178,7 +181,21 @@ function App() {
           justifyContent: 'center',
           alignItems: 'center',
           rowGap: 10,
+          position: 'relative',
         }}>
+        <View
+          style={{
+            height: 80,
+            width: '100%',
+            backgroundColor: '#ddd',
+            position: 'absolute',
+            top: 0,
+            paddingLeft: 10,
+            display: 'flex',
+            justifyContent: 'center',
+          }}>
+          <Image style={{width: 150, height: 60}} source={require(imgUrl)} />
+        </View>
         <Text
           style={{
             width: '80%',
@@ -190,7 +207,8 @@ function App() {
             color: '#000',
             fontSize: 20,
           }}>
-          {`Text: ${log?.text} \n ID: ${log.id}`}
+          {`Text: ${log?.text} \n`}
+          {log.id && ` ID: ${log.id}`}
         </Text>
         <Text
           style={{
@@ -260,6 +278,7 @@ function App() {
               backgroundColor: '#006C5B',
             }}
             onPress={async () => {
+              setText(null);
               const tag = await NfcProxy.readTag(setStatus, setLog);
               console.log('Tag console', tag);
             }}

@@ -112,27 +112,29 @@ class NfcProxy {
 
   readTag = withAndroidPrompt(async (setStatus, setLog) => {
     let tag = null;
-    setStatus('ready....');
+    setStatus('Bitte Tag scannen....');
     try {
       await NfcManager.requestTechnology([NfcTech.Ndef]);
 
       tag = await NfcManager.getTag();
-      tag.ndefStatus = await NfcManager.ndefHandler.getNdefStatus();
+      // tag.ndefStatus = await NfcManager.ndefHandler.getNdefStatus();
 
       if (Platform.OS === 'ios') {
         await NfcManager.setAlertMessageIOS('Success');
       }
+      setStatus('Success...');
     } catch (ex) {
       // for tag reading, we don't actually need to show any error
       console.log(ex);
+      setStatus('Fehler aufgetreten!');
     } finally {
       NfcManager.cancelTechnologyRequest();
-      setStatus('Success...');
     }
 
     setLog(JSON.stringify(tag));
     if (Array.isArray(tag.ndefMessage) && tag.ndefMessage.length > 0) {
       let msg = tag.ndefMessage[0];
+      console.log(msg);
       let text = Ndef.text.decodePayload(msg.payload);
       setLog({text, id: tag.id});
     } else {
@@ -147,7 +149,7 @@ class NfcProxy {
     console.log('value =>', value);
 
     try {
-      setStatus('Warte...');
+      setStatus('Bitte Tag scannen....');
       console.log('1');
       await NfcManager.requestTechnology(NfcTech.Ndef, {
         alertMessage: 'Ready to write some NDEF',
@@ -169,6 +171,7 @@ class NfcProxy {
     } catch (ex) {
       handleException(ex);
       console.log(ex);
+      setStatus(ex.toString());
     } finally {
       NfcManager.cancelTechnologyRequest();
     }
