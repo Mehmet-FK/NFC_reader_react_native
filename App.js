@@ -37,7 +37,7 @@ function App() {
     setText(text);
   };
 
-  const initNfc = async () => {
+  /* const initNfc = async () => {
     try {
       const success = await NfcProxy.init();
       setSupported(success);
@@ -130,7 +130,7 @@ function App() {
       console.warn('ALERTALERTALERT', ex);
     }
   };
-
+ */
   const writeNdef = async () => {
     if (!text) {
       setStatus('Eingabe erforderlich!');
@@ -167,7 +167,7 @@ function App() {
   };
 
   useEffect(() => {
-    initNfc();
+    NfcProxy.init();
   }, []);
 
   return (
@@ -281,9 +281,7 @@ function App() {
               setText(null);
               const tag = await NfcProxy.readTag(setStatus, setLog);
               console.log('Tag console', tag);
-            }}
-            // onPress={readMifare}
-          >
+            }}>
             <Text
               style={{
                 width: 120,
@@ -300,24 +298,5 @@ function App() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
 
 export default App;
